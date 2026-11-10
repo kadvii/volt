@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude vault directories from Google Cloud Backup -->
+        <exclude domain="file" path="vault_primary" />
+        <exclude domain="file" path="vault_decoy" />
+        <exclude domain="database" path="vault_storage.db" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Device to device transfer rules -->
+        <include domain="file" path="." />
+    </device-transfer>
+</data-extraction-rules>
+

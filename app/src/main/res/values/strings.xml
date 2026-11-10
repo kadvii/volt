@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Notes</string>
+    <string name="notes_title">My Notes</string>
+    <string name="search_notes_placeholder">Search notes</string>
+    <string name="empty_notes_title">No notes yet</string>
+    <string name="empty_notes_subtitle">Tap the add button below to create your first note.</string>
+    <string name="create_note">Create note</string>
+</resources>
+

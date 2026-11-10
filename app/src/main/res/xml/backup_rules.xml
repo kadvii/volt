@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude encrypted media files from Android Auto-Backup -->
+    <exclude domain="file" path="vault_primary" />
+    <exclude domain="file" path="vault_decoy" />
+    <!-- Exclude vault database and keystore artifacts -->
+    <exclude domain="database" path="vault_storage.db" />
+</full-backup-content>
+
