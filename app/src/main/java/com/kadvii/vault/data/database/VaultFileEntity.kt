@@ -2,11 +2,19 @@ package com.kadvii.vault.data.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.kadvii.vault.domain.model.VaultFile
 import com.kadvii.vault.domain.model.VaultFileType
 
-@Entity(tableName = "vault_files")
+@Entity(
+    tableName = "vault_files",
+    indices = [
+        Index(value = ["is_decoy"]),
+        Index(value = ["album_id"]),
+        Index(value = ["uuid"], unique = true)
+    ]
+)
 data class VaultFileEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,

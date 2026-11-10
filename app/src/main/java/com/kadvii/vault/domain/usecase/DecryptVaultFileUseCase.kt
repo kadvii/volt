@@ -2,6 +2,7 @@ package com.kadvii.vault.domain.usecase
 
 import com.kadvii.vault.domain.model.VaultFile
 import com.kadvii.vault.domain.repository.VaultRepository
+import java.io.File
 import java.io.InputStream
 
 class DecryptVaultFileUseCase(
@@ -14,5 +15,8 @@ class DecryptVaultFileUseCase(
     fun getStream(file: VaultFile): InputStream {
         return vaultRepository.getDecryptedStream(file)
     }
-}
 
+    suspend fun decryptToFile(file: VaultFile, destinationFile: File) {
+        vaultRepository.decryptToFile(file, destinationFile)
+    }
+}

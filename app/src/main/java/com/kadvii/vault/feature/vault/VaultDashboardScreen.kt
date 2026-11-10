@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -47,6 +46,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -67,11 +67,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kadvii.vault.VaultApplication
 import com.kadvii.vault.domain.model.Album
 import com.kadvii.vault.domain.model.VaultFile
 import com.kadvii.vault.domain.model.VaultFileType
@@ -96,12 +98,15 @@ fun VaultDashboardScreen(
 
     var showImportSheet by remember { mutableStateOf(false) }
     var showCreateAlbumDialog by remember { mutableStateOf(false) }
+    var albumToDelete by remember { mutableStateOf<Album?>(null) }
     var newAlbumName by remember { mutableStateOf("") }
 
     // Visual media picker (Photos & Videos)
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
+        val app = context.applicationContext as? VaultApplication
+        app?.container?.vaultSessionManager?.isAwaitingSystemPicker = false
         if (uris.isNotEmpty()) {
             viewModel.importUris(context, uris)
         }
@@ -111,6 +116,8 @@ fun VaultDashboardScreen(
     val docPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
+        val app = context.applicationContext as? VaultApplication
+        app?.container?.vaultSessionManager?.isAwaitingSystemPicker = false
         if (uris.isNotEmpty()) {
             viewModel.importUris(context, uris, defaultType = VaultFileType.DOCUMENT)
         }
@@ -203,25 +210,42 @@ fun VaultDashboardScreen(
                 }
             }
 
-            // Import progress banner
+            // Advanced Import progress banner with percentage & cancel
             AnimatedVisibility(visible = uiState.isImporting) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = uiState.importProgressMessage ?: "Importing...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = uiState.importProgressMessage ?: "Importing...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        TextButton(onClick = viewModel::cancelImport) {
+                            Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { uiState.importProgress },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -235,6 +259,7 @@ fun VaultDashboardScreen(
                         viewModel.onTabSelected(VaultTab.ALL)
                     },
                     onCreateAlbumClick = { showCreateAlbumDialog = true },
+                    onDeleteAlbumClick = { album -> albumToDelete = album },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -290,6 +315,8 @@ fun VaultDashboardScreen(
                     title = "Import Photos & Videos",
                     subtitle = "Secure photos and videos using Android Photo Picker",
                     onClick = {
+                        val app = context.applicationContext as? VaultApplication
+                        app?.container?.vaultSessionManager?.isAwaitingSystemPicker = true
                         showImportSheet = false
                         mediaPickerLauncher.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
@@ -304,6 +331,8 @@ fun VaultDashboardScreen(
                     title = "Import Documents",
                     subtitle = "PDFs, spreadsheets, text files, archives",
                     onClick = {
+                        val app = context.applicationContext as? VaultApplication
+                        app?.container?.vaultSessionManager?.isAwaitingSystemPicker = true
                         showImportSheet = false
                         docPickerLauncher.launch(arrayOf("*/*"))
                     }
@@ -320,8 +349,6 @@ fun VaultDashboardScreen(
                         showCreateAlbumDialog = true
                     }
                 )
-
-                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -333,12 +360,12 @@ fun VaultDashboardScreen(
                 showCreateAlbumDialog = false
                 newAlbumName = ""
             },
-            title = { Text("Create Album") },
+            title = { Text("New Album") },
             text = {
                 OutlinedTextField(
                     value = newAlbumName,
                     onValueChange = { newAlbumName = it },
-                    label = { Text("Album name") },
+                    label = { Text("Album Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -348,8 +375,8 @@ fun VaultDashboardScreen(
                     onClick = {
                         if (newAlbumName.isNotBlank()) {
                             viewModel.createAlbum(newAlbumName)
-                            showCreateAlbumDialog = false
                             newAlbumName = ""
+                            showCreateAlbumDialog = false
                         }
                     }
                 ) {
@@ -357,13 +384,64 @@ fun VaultDashboardScreen(
                 }
             },
             dismissButton = {
-                TextButton(
+                TextButton(onClick = {
+                    showCreateAlbumDialog = false
+                    newAlbumName = ""
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Delete Album Confirmation Dialog
+    albumToDelete?.let { album ->
+        AlertDialog(
+            onDismissRequest = { albumToDelete = null },
+            title = { Text("Delete Album") },
+            text = { Text("Are you sure you want to delete \"${album.name}\"? Contained files will remain securely in your vault under All Files.") },
+            confirmButton = {
+                Button(
                     onClick = {
-                        showCreateAlbumDialog = false
-                        newAlbumName = ""
+                        viewModel.deleteAlbum(album.id)
+                        albumToDelete = null
                     }
                 ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { albumToDelete = null }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Import Summary Dialog (Per-file status & results)
+    uiState.lastImportSummary?.let { summary ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearImportSummary,
+            title = { Text(if (summary.failureCount == 0) "Import Complete" else "Import Finished with Warnings") },
+            text = {
+                Column {
+                    Text("✓ ${summary.successCount} of ${summary.totalCount} file(s) imported successfully.")
+                    if (summary.skippedDuplicatesCount > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("ℹ ${summary.skippedDuplicatesCount} duplicate file(s) skipped.")
+                    }
+                    if (summary.failureCount > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("⚠ ${summary.failureCount} file(s) failed:", color = MaterialTheme.colorScheme.error)
+                        summary.failedFileNames.take(5).forEach { name ->
+                            Text("• $name", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = viewModel::clearImportSummary) {
+                    Text("OK")
                 }
             }
         )
@@ -372,7 +450,7 @@ fun VaultDashboardScreen(
 
 @Composable
 private fun ImportOptionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -380,18 +458,20 @@ private fun ImportOptionRow(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        ),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
@@ -478,11 +558,13 @@ private fun FilesGrid(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AlbumsGrid(
     albums: List<Album>,
     onAlbumClick: (Album) -> Unit,
     onCreateAlbumClick: () -> Unit,
+    onDeleteAlbumClick: (Album) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyVerticalGrid(
@@ -529,10 +611,13 @@ private fun AlbumsGrid(
 
         items(albums, key = { it.id }) { album ->
             Card(
-                onClick = { onAlbumClick(album) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1.2f),
+                    .aspectRatio(1.2f)
+                    .combinedClickable(
+                        onClick = { onAlbumClick(album) },
+                        onLongClick = { onDeleteAlbumClick(album) }
+                    ),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -544,12 +629,29 @@ private fun AlbumsGrid(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        IconButton(
+                            onClick = { onDeleteAlbumClick(album) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Album",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                     Column {
                         Text(
                             text = album.name,

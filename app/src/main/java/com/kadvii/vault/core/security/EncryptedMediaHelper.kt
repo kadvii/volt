@@ -2,6 +2,7 @@ package com.kadvii.vault.core.security
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.collection.LruCache
 import com.kadvii.vault.domain.model.VaultFile
 import com.kadvii.vault.domain.usecase.DecryptVaultFileUseCase
 import kotlinx.coroutines.Dispatchers
@@ -9,12 +10,30 @@ import kotlinx.coroutines.withContext
 
 object EncryptedMediaHelper {
 
+    private val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+    private val cacheSizeKb = (maxMemoryKb / 8).coerceIn(4096, 20480) // Between 4 MB and 20 MB
+
+    private val memoryCache = object : LruCache<String, Bitmap>(cacheSizeKb) {
+        override fun sizeOf(key: String, value: Bitmap): Int {
+            return (value.byteCount / 1024).coerceAtLeast(1)
+        }
+    }
+
+    fun clearMemoryCache() {
+        memoryCache.evictAll()
+    }
+
     suspend fun loadDecryptedBitmap(
         file: VaultFile,
         decryptVaultFileUseCase: DecryptVaultFileUseCase,
         targetWidth: Int = 512,
         targetHeight: Int = 512
     ): Bitmap? = withContext(Dispatchers.IO) {
+        val cacheKey = "${file.id}_${file.updatedAt}_${targetWidth}x${targetHeight}"
+
+        // 1. Check in-memory LRU cache first
+        memoryCache.get(cacheKey)?.let { return@withContext it }
+
         try {
             val bytes = decryptVaultFileUseCase.getBytes(file)
 
@@ -27,8 +46,16 @@ object EncryptedMediaHelper {
             // Calculate sample size
             options.inSampleSize = calculateInSampleSize(options, targetWidth, targetHeight)
             options.inJustDecodeBounds = false
+            // Use RGB_565 for small thumbnails to save 50% memory
+            if (targetWidth <= 256 && targetHeight <= 256) {
+                options.inPreferredConfig = Bitmap.Config.RGB_565
+            }
 
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            if (bitmap != null) {
+                memoryCache.put(cacheKey, bitmap)
+            }
+            bitmap
         } catch (_: Exception) {
             null
         }
@@ -54,4 +81,3 @@ object EncryptedMediaHelper {
         return inSampleSize
     }
 }
-

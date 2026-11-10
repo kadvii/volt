@@ -77,8 +77,13 @@ class VaultRepositoryImpl(
         }
     }
 
-    override fun getFileById(id: Long): Flow<VaultFile?> {
-        return vaultFileDao.getFileById(id).map { it?.toDomain() }
+    override fun getFileById(id: Long, isDecoy: Boolean?): Flow<VaultFile?> {
+        val flow = if (isDecoy != null) {
+            vaultFileDao.getFileByIdAndDecoy(id, isDecoy)
+        } else {
+            vaultFileDao.getFileById(id)
+        }
+        return flow.map { it?.toDomain() }
     }
 
     override fun getAlbums(isDecoy: Boolean): Flow<List<Album>> {
@@ -101,37 +106,43 @@ class VaultRepositoryImpl(
         val storageDir = getStorageDirectory(isDecoy)
         val uuid = UUID.randomUUID().toString()
         val destinationFile = File(storageDir, "$uuid.enc")
-
         val key = keystoreManager.getOrCreateKey(getKeyAlias(isDecoy))
 
-        // Encrypt input stream to destination file atomically
-        cipherService.encryptStreamToFileAtomically(sourceInputStream, destinationFile, key)
+        try {
+            // Encrypt input stream to destination file atomically
+            cipherService.encryptStreamToFileAtomically(sourceInputStream, destinationFile, key)
 
-        val entity = VaultFileEntity(
-            uuid = uuid,
-            fileName = originalName,
-            encryptedPath = destinationFile.absolutePath,
-            fileType = fileType.name,
-            fileSizeBytes = destinationFile.length(),
-            mimeType = mimeType,
-            thumbnailPath = null,
-            albumId = albumId,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis(),
-            isFavorite = false,
-            isDecoy = isDecoy
-        )
+            val entity = VaultFileEntity(
+                uuid = uuid,
+                fileName = originalName,
+                encryptedPath = destinationFile.absolutePath,
+                fileType = fileType.name,
+                fileSizeBytes = destinationFile.length(),
+                mimeType = mimeType,
+                thumbnailPath = null,
+                albumId = albumId,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                isFavorite = false,
+                isDecoy = isDecoy
+            )
 
-        vaultFileDao.insertFile(entity)
+            vaultFileDao.insertFile(entity)
+        } catch (e: Exception) {
+            if (destinationFile.exists()) {
+                destinationFile.delete()
+            }
+            throw e
+        }
     }
 
-    override suspend fun deleteFile(file: VaultFile): Boolean {
+    override suspend fun deleteFile(file: VaultFile): Boolean = withContext(Dispatchers.IO) {
         val diskFile = File(file.encryptedPath)
         if (diskFile.exists()) {
             diskFile.delete()
         }
         vaultFileDao.deleteFileById(file.id)
-        return true
+        true
     }
 
     override suspend fun toggleFavorite(fileId: Long, isFavorite: Boolean) {
@@ -147,9 +158,15 @@ class VaultRepositoryImpl(
         return albumDao.insertAlbum(entity)
     }
 
-    override suspend fun deleteAlbum(albumId: Long) {
+    override suspend fun deleteAlbum(albumId: Long, isDecoy: Boolean) {
+        vaultFileDao.clearAlbumForFiles(albumId, isDecoy)
         albumDao.deleteAlbumById(albumId)
     }
+
+    override suspend fun checkDuplicate(fileName: String, fileSizeBytes: Long, isDecoy: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            vaultFileDao.findDuplicate(fileName, fileSizeBytes, isDecoy) != null
+        }
 
     override fun getDecryptedBytes(file: VaultFile): ByteArray {
         val key = keystoreManager.getOrCreateKey(getKeyAlias(file.isDecoy))
@@ -162,5 +179,30 @@ class VaultRepositoryImpl(
         val diskFile = File(file.encryptedPath)
         return cipherService.getDecryptedStream(diskFile, key)
     }
-}
 
+    override suspend fun decryptToFile(file: VaultFile, destinationFile: File): Unit = withContext(Dispatchers.IO) {
+        val key = keystoreManager.getOrCreateKey(getKeyAlias(file.isDecoy))
+        val diskFile = File(file.encryptedPath)
+        cipherService.decryptFileToFileAtomically(diskFile, destinationFile, key)
+    }
+
+    override suspend fun cleanupOrphanedFiles(isDecoy: Boolean): Int = withContext(Dispatchers.IO) {
+        val storageDir = getStorageDirectory(isDecoy)
+        val knownUuids = vaultFileDao.getAllUuids(isDecoy).toSet()
+        var deletedCount = 0
+
+        storageDir.listFiles()?.forEach { file ->
+            if (file.name.endsWith(".tmp") || file.name.endsWith(".dec_tmp")) {
+                file.delete()
+                deletedCount++
+            } else if (file.name.endsWith(".enc")) {
+                val fileUuid = file.name.removeSuffix(".enc")
+                if (fileUuid !in knownUuids) {
+                    file.delete()
+                    deletedCount++
+                }
+            }
+        }
+        deletedCount
+    }
+}

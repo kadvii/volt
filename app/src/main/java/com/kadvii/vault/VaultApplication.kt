@@ -12,5 +12,8 @@ class VaultApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = DefaultAppContainer(this)
+        container.vaultSessionManager.registerLockListener {
+            com.kadvii.vault.core.security.EncryptedMediaHelper.clearMemoryCache()
+        }
     }
 }

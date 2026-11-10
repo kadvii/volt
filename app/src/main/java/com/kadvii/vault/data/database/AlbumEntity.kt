@@ -2,10 +2,16 @@ package com.kadvii.vault.data.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.kadvii.vault.domain.model.Album
 
-@Entity(tableName = "albums")
+@Entity(
+    tableName = "albums",
+    indices = [
+        Index(value = ["is_decoy"])
+    ]
+)
 data class AlbumEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,

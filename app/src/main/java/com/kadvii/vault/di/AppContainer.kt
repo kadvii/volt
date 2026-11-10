@@ -133,6 +133,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         BackupManager(
             vaultFileDao = vaultDatabase.vaultFileDao(),
             cipherService = cipherService,
+            keystoreManager = keystoreManager,
             filesDir = context.filesDir
         )
     }

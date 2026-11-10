@@ -1,6 +1,8 @@
 package com.kadvii.vault.feature.backup
 
 import com.kadvii.vault.core.security.AesGcmCipherService
+import com.kadvii.vault.core.security.AndroidKeystoreManager
+import com.kadvii.vault.core.security.KeystoreManager
 import com.kadvii.vault.data.database.VaultFileDao
 import com.kadvii.vault.data.database.VaultFileEntity
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +32,8 @@ class FakeVaultFileDao : VaultFileDao {
     override fun getFilesByAlbum(albumId: Long, isDecoy: Boolean): Flow<List<VaultFileEntity>> = flow
     override fun getFavoriteFiles(isDecoy: Boolean): Flow<List<VaultFileEntity>> = flow
     override fun getFileById(id: Long): Flow<VaultFileEntity?> = MutableStateFlow(filesList.firstOrNull { it.id == id })
+    override fun getFileByIdAndDecoy(id: Long, isDecoy: Boolean): Flow<VaultFileEntity?> =
+        MutableStateFlow(filesList.firstOrNull { it.id == id && it.isDecoy == isDecoy })
     override suspend fun getFileByIdSync(id: Long): VaultFileEntity? = filesList.firstOrNull { it.id == id }
 
     override suspend fun insertFile(file: VaultFileEntity): Long {
@@ -51,6 +55,9 @@ class FakeVaultFileDao : VaultFileDao {
 
     override suspend fun setFavorite(id: Long, isFavorite: Boolean, timestamp: Long) {}
     override suspend fun moveToAlbum(id: Long, albumId: Long?, timestamp: Long) {}
+    override suspend fun clearAlbumForFiles(albumId: Long, isDecoy: Boolean, timestamp: Long) {}
+    override suspend fun findDuplicate(fileName: String, sizeBytes: Long, isDecoy: Boolean): VaultFileEntity? = null
+    override suspend fun getAllUuids(isDecoy: Boolean): List<String> = filesList.filter { it.isDecoy == isDecoy }.map { it.uuid }
     override suspend fun countFilesInAlbum(albumId: Long, isDecoy: Boolean): Int = 0
 }
 
@@ -61,6 +68,7 @@ class BackupManagerTest {
 
     private lateinit var fakeDao: FakeVaultFileDao
     private lateinit var cipherService: AesGcmCipherService
+    private lateinit var keystoreManager: KeystoreManager
     private lateinit var backupManager: BackupManager
     private lateinit var filesDir: File
 
@@ -69,9 +77,11 @@ class BackupManagerTest {
         filesDir = tempFolder.root
         fakeDao = FakeVaultFileDao()
         cipherService = AesGcmCipherService()
+        keystoreManager = AndroidKeystoreManager()
         backupManager = BackupManager(
             vaultFileDao = fakeDao,
             cipherService = cipherService,
+            keystoreManager = keystoreManager,
             filesDir = filesDir
         )
     }
@@ -95,17 +105,21 @@ class BackupManagerTest {
 
     @Test
     fun roundtrip_createAndRestoreBackup_restoresFilesAndDatabase() = runBlocking {
-        // Prepare dummy disk file
-        val dummyFile = File(filesDir, "test_file.enc")
-        dummyFile.writeBytes("EncryptedContentBytes_12345".toByteArray())
+        // Prepare properly encrypted dummy file
+        val plainSource = File(filesDir, "plain.jpg")
+        plainSource.writeBytes("MyPrivatePhotoPayloadContent_999".toByteArray())
+
+        val encryptedFile = File(filesDir, "test-uuid-1.enc")
+        val masterKey = keystoreManager.getOrCreateKey(AndroidKeystoreManager.MASTER_VAULT_KEY_ALIAS)
+        cipherService.encryptFileAtomically(plainSource, encryptedFile, masterKey)
 
         val entity = VaultFileEntity(
             id = 1L,
             uuid = "test-uuid-1",
             fileName = "photo.jpg",
-            encryptedPath = dummyFile.absolutePath,
+            encryptedPath = encryptedFile.absolutePath,
             fileType = "PHOTO",
-            fileSizeBytes = dummyFile.length(),
+            fileSizeBytes = encryptedFile.length(),
             mimeType = "image/jpeg",
             isDecoy = false
         )
@@ -158,4 +172,3 @@ class BackupManagerTest {
         }
     }
 }
-

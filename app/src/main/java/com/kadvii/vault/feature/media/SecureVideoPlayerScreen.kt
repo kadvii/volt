@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
@@ -40,7 +41,6 @@ import com.kadvii.vault.domain.usecase.DecryptVaultFileUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 
 @kotlin.OptIn(ExperimentalMaterial3Api::class)
 @OptIn(UnstableApi::class)
@@ -55,22 +55,29 @@ fun SecureVideoPlayerScreen(
     var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
     var tempDecryptedFile by remember { mutableStateOf<File?>(null) }
     var isPreparing by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(file.id) {
         withContext(Dispatchers.IO) {
             try {
-                // Decrypt into a short-lived ephemeral cache file
+                // Check usable storage space before decrypting
                 val cacheDir = File(context.cacheDir, "ephemeral_video")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
 
-                val tempFile = File.createTempFile("vault_stream_", ".tmp", cacheDir)
+                val requiredBytes = file.fileSizeBytes + 10 * 1024 * 1024L
+                if (cacheDir.usableSpace < requiredBytes) {
+                    withContext(Dispatchers.Main) {
+                        errorMessage = "Insufficient storage space to prepare video playback"
+                        isPreparing = false
+                    }
+                    return@withContext
+                }
+
+                val tempFile = File.createTempFile("vault_stream_", ".mp4", cacheDir)
                 tempFile.deleteOnExit()
 
-                decryptVaultFileUseCase.getStream(file).use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
+                // Stream decrypt directly from file to file (constant 64 KB memory, no heap buffers)
+                decryptVaultFileUseCase.decryptToFile(file, tempFile)
 
                 tempDecryptedFile = tempFile
 
@@ -84,8 +91,9 @@ fun SecureVideoPlayerScreen(
                     exoPlayer = player
                     isPreparing = false
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
+                    errorMessage = e.message ?: "Unable to play video"
                     isPreparing = false
                 }
             }
@@ -94,6 +102,7 @@ fun SecureVideoPlayerScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            exoPlayer?.stop()
             exoPlayer?.release()
             exoPlayer = null
             // Securely wipe ephemeral playback file
@@ -157,11 +166,11 @@ fun SecureVideoPlayerScreen(
                 )
             } else {
                 Text(
-                    text = "Unable to play video",
-                    color = Color.White.copy(alpha = 0.7f)
+                    text = errorMessage ?: "Unable to play video",
+                    color = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(16.dp)
                 )
             }
         }
     }
 }
-

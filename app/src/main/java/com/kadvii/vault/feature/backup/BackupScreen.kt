@@ -190,6 +190,8 @@ fun BackupScreen(
 
                     Button(
                         onClick = {
+                            val app = context.applicationContext as? com.kadvii.vault.VaultApplication
+                            app?.container?.vaultSessionManager?.isAwaitingSystemPicker = true
                             val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                             exportLauncher.launch("vault_backup_$timeStr.vlt")
                         },
@@ -245,6 +247,8 @@ fun BackupScreen(
 
                     Button(
                         onClick = {
+                            val app = context.applicationContext as? com.kadvii.vault.VaultApplication
+                            app?.container?.vaultSessionManager?.isAwaitingSystemPicker = true
                             restoreLauncher.launch(arrayOf("*/*"))
                         },
                         enabled = !uiState.isProcessing && uiState.restorePassphrase.isNotBlank(),

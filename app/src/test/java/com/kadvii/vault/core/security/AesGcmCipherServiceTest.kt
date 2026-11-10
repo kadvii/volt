@@ -99,5 +99,48 @@ class AesGcmCipherServiceTest {
         val tmpFile = File(tempFolder.root, "sample.enc.tmp")
         assertFalse(tmpFile.exists()) // Temp file removed after rename
     }
-}
 
+    @Test
+    fun emptyFile_encryptionAndDecryption_roundtripSuccessful() {
+        val emptyBytes = ByteArray(0)
+        val encryptedOut = ByteArrayOutputStream()
+        cipherService.encryptStream(ByteArrayInputStream(emptyBytes), encryptedOut, testKey)
+        val cipherBytes = encryptedOut.toByteArray()
+
+        assertEquals(12 + 16, cipherBytes.size) // 12-byte IV + 16-byte GCM tag
+
+        val decryptedOut = ByteArrayOutputStream()
+        cipherService.decryptStream(ByteArrayInputStream(cipherBytes), decryptedOut, testKey)
+        assertArrayEquals(emptyBytes, decryptedOut.toByteArray())
+    }
+
+    @Test
+    fun largeFileStreaming_decryptFileToFileAtomically_matchesOriginal() {
+        // 512 KB payload
+        val original = ByteArray(512 * 1024) { (it % 128).toByte() }
+        val srcFile = tempFolder.newFile("large_test.dat")
+        srcFile.writeBytes(original)
+
+        val encFile = File(tempFolder.root, "large_test.enc")
+        cipherService.encryptFileAtomically(srcFile, encFile, testKey)
+
+        val decFile = File(tempFolder.root, "large_test.dec")
+        cipherService.decryptFileToFileAtomically(encFile, decFile, testKey)
+
+        assertTrue(decFile.exists())
+        assertEquals(srcFile.length(), decFile.length())
+        assertArrayEquals(original, decFile.readBytes())
+    }
+
+    @Test
+    fun corruptedFile_incompleteIv_throwsSecurityException() {
+        val incomplete = ByteArray(8) // less than 12 bytes
+        try {
+            val decryptedOut = ByteArrayOutputStream()
+            cipherService.decryptStream(ByteArrayInputStream(incomplete), decryptedOut, testKey)
+            fail("Expected SecurityException when IV is incomplete")
+        } catch (e: SecurityException) {
+            assertTrue(e.message!!.contains("incomplete", ignoreCase = true))
+        }
+    }
+}

@@ -62,9 +62,24 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Reset picker flag when activity is resumed
+        val sessionManager = (applicationContext as? VaultApplication)?.container?.vaultSessionManager
+        sessionManager?.isAwaitingSystemPicker = false
+    }
+
     override fun onStop() {
         super.onStop()
-        // Auto-lock vault session when app moves to background
-        (applicationContext as? VaultApplication)?.container?.vaultSessionManager?.lock()
+        val sessionManager = (applicationContext as? VaultApplication)?.container?.vaultSessionManager
+        // Auto-lock vault session when app moves to background, but do NOT lock if:
+        // 1. Changing configurations (e.g. screen rotation)
+        // 2. Currently awaiting system file picker result
+        // 3. Import operation is in progress in the background
+        if (!isChangingConfigurations && 
+            sessionManager?.isAwaitingSystemPicker != true && 
+            sessionManager?.isImportInProgress != true) {
+            sessionManager?.lock()
+        }
     }
 }

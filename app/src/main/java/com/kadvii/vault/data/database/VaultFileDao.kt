@@ -25,6 +25,9 @@ interface VaultFileDao {
     @Query("SELECT * FROM vault_files WHERE id = :id LIMIT 1")
     fun getFileById(id: Long): Flow<VaultFileEntity?>
 
+    @Query("SELECT * FROM vault_files WHERE id = :id AND is_decoy = :isDecoy LIMIT 1")
+    fun getFileByIdAndDecoy(id: Long, isDecoy: Boolean): Flow<VaultFileEntity?>
+
     @Query("SELECT * FROM vault_files WHERE id = :id LIMIT 1")
     suspend fun getFileByIdSync(id: Long): VaultFileEntity?
 
@@ -43,7 +46,15 @@ interface VaultFileDao {
     @Query("UPDATE vault_files SET album_id = :albumId, updated_at = :timestamp WHERE id = :id")
     suspend fun moveToAlbum(id: Long, albumId: Long?, timestamp: Long = System.currentTimeMillis())
 
+    @Query("UPDATE vault_files SET album_id = NULL, updated_at = :timestamp WHERE album_id = :albumId AND is_decoy = :isDecoy")
+    suspend fun clearAlbumForFiles(albumId: Long, isDecoy: Boolean, timestamp: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM vault_files WHERE file_name = :fileName AND file_size_bytes = :sizeBytes AND is_decoy = :isDecoy LIMIT 1")
+    suspend fun findDuplicate(fileName: String, sizeBytes: Long, isDecoy: Boolean): VaultFileEntity?
+
+    @Query("SELECT uuid FROM vault_files WHERE is_decoy = :isDecoy")
+    suspend fun getAllUuids(isDecoy: Boolean): List<String>
+
     @Query("SELECT COUNT(*) FROM vault_files WHERE album_id = :albumId AND is_decoy = :isDecoy")
     suspend fun countFilesInAlbum(albumId: Long, isDecoy: Boolean): Int
 }
-

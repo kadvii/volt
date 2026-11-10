@@ -163,7 +163,8 @@ fun RootNavGraph(
                     getVaultFilesUseCase = appContainer.getVaultFilesUseCase,
                     encryptAndStoreFileUseCase = appContainer.encryptAndStoreFileUseCase,
                     deleteVaultFileUseCase = appContainer.deleteVaultFileUseCase,
-                    vaultRepository = appContainer.vaultRepository
+                    vaultRepository = appContainer.vaultRepository,
+                    sessionManager = appContainer.vaultSessionManager
                 )
             )
 
@@ -198,7 +199,8 @@ fun RootNavGraph(
                     getVaultFilesUseCase = appContainer.getVaultFilesUseCase,
                     encryptAndStoreFileUseCase = appContainer.encryptAndStoreFileUseCase,
                     deleteVaultFileUseCase = appContainer.deleteVaultFileUseCase,
-                    vaultRepository = appContainer.vaultRepository
+                    vaultRepository = appContainer.vaultRepository,
+                    sessionManager = appContainer.vaultSessionManager
                 )
             )
 
@@ -230,7 +232,8 @@ fun RootNavGraph(
             arguments = listOf(navArgument("fileId") { type = NavType.LongType })
         ) { backStackEntry ->
             val fileId = backStackEntry.arguments?.getLong("fileId") ?: 0L
-            val fileState by appContainer.vaultRepository.getFileById(fileId).collectAsStateWithLifecycle(null)
+            val isDecoy = appContainer.vaultSessionManager.isDecoySession
+            val fileState by appContainer.vaultRepository.getFileById(fileId, isDecoy).collectAsStateWithLifecycle(null)
 
             fileState?.let { file ->
                 SecureImageViewerScreen(
@@ -257,7 +260,8 @@ fun RootNavGraph(
             arguments = listOf(navArgument("fileId") { type = NavType.LongType })
         ) { backStackEntry ->
             val fileId = backStackEntry.arguments?.getLong("fileId") ?: 0L
-            val fileState by appContainer.vaultRepository.getFileById(fileId).collectAsStateWithLifecycle(null)
+            val isDecoy = appContainer.vaultSessionManager.isDecoySession
+            val fileState by appContainer.vaultRepository.getFileById(fileId, isDecoy).collectAsStateWithLifecycle(null)
 
             fileState?.let { file ->
                 SecureVideoPlayerScreen(
@@ -273,7 +277,8 @@ fun RootNavGraph(
             arguments = listOf(navArgument("fileId") { type = NavType.LongType })
         ) { backStackEntry ->
             val fileId = backStackEntry.arguments?.getLong("fileId") ?: 0L
-            val fileState by appContainer.vaultRepository.getFileById(fileId).collectAsStateWithLifecycle(null)
+            val isDecoy = appContainer.vaultSessionManager.isDecoySession
+            val fileState by appContainer.vaultRepository.getFileById(fileId, isDecoy).collectAsStateWithLifecycle(null)
 
             fileState?.let { file ->
                 SecureDocumentViewerScreen(

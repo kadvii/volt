@@ -23,6 +23,7 @@ class AesGcmCipherService {
         const val GCM_IV_LENGTH_BYTES = 12
         const val GCM_TAG_LENGTH_BITS = 128
         const val BUFFER_SIZE = 64 * 1024 // 64 KB chunks
+        const val MAX_BYTE_ARRAY_DECRYPT_SIZE = 30 * 1024 * 1024L // 30 MB max for in-memory operations
     }
 
     private val secureRandom = SecureRandom()
@@ -160,12 +161,47 @@ class AesGcmCipherService {
     }
 
     /**
-     * Decrypts an encrypted file directly into a byte array in memory (for thumbnails, photos).
+     * Decrypts an encrypted file directly to a destination file on disk.
+     * Uses constant 64 KB memory and verifies GCM authentication tag upon completion.
+     */
+    fun decryptFileToFileAtomically(
+        encryptedFile: File,
+        destinationFile: File,
+        secretKey: SecretKey
+    ) {
+        val tempFile = File(destinationFile.parentFile, "${destinationFile.name}.dec_tmp")
+        try {
+            FileInputStream(encryptedFile).use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    decryptStream(input, output, secretKey)
+                }
+            }
+            if (!tempFile.renameTo(destinationFile)) {
+                tempFile.copyTo(destinationFile, overwrite = true)
+                tempFile.delete()
+            }
+        } catch (e: Exception) {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+            throw e
+        }
+    }
+
+    /**
+     * Decrypts an encrypted file directly into a byte array in memory (for thumbnails, small photos/notes).
+     * Protected against OOM by enforcing a maximum allowed byte threshold.
      */
     fun decryptFileToByteArray(
         encryptedFile: File,
-        secretKey: SecretKey
+        secretKey: SecretKey,
+        maxBytes: Long = MAX_BYTE_ARRAY_DECRYPT_SIZE
     ): ByteArray {
+        if (encryptedFile.length() > maxBytes) {
+            throw IllegalArgumentException(
+                "File too large to load into memory directly (${encryptedFile.length()} bytes, max $maxBytes). Use decryptFileToFileAtomically instead."
+            )
+        }
         val output = ByteArrayOutputStream()
         FileInputStream(encryptedFile).use { input ->
             decryptStream(input, output, secretKey)
