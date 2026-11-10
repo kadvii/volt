@@ -37,3 +37,4 @@ class VaultDatabaseMigrationTest {
         assertTrue(executedStatements.any { it.contains("index_albums_is_decoy") })
     }
 }
+

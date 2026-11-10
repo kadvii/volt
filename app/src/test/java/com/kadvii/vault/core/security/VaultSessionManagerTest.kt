@@ -58,3 +58,4 @@ class VaultSessionManagerTest {
         assertTrue(listenerCalled)
     }
 }
+
